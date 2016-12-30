@@ -3,7 +3,10 @@ import collections
 import contextlib
 import sys
 import wave
-
+import  logging
+logging.basicConfig(
+    format='%(asctime)s [%(levelname)s] [%(name)s] %(message)s',
+    level=logging.INFO)
 
 
 def read_wave(path):
@@ -43,6 +46,9 @@ def frame_generator(frame_duration_ms, audio, sample_rate):
         timestamp += duration
         offset += n
 
+def check_silence(vad,sample_rate):
+    return
+
 
 def vad_collector(sample_rate, frame_duration_ms,
                   padding_duration_ms, vad, frames):
@@ -68,12 +74,15 @@ def vad_collector(sample_rate, frame_duration_ms,
             num_unvoiced = len([f for f in ring_buffer
                                 if not vad.is_speech(f.bytes, sample_rate)])
             if num_unvoiced > 0.9 * ring_buffer.maxlen:
+                logging.info(frame.timestamp)
+                logging.info(frame.duration)
                 #sys.stdout.write('-(%s)' % (frame.timestamp + frame.duration))
                 triggered = False
                 yield b''.join([f.bytes for f in voiced_frames])
                 ring_buffer.clear()
                 voiced_frames = []
     if triggered:
+        #logging.info(frame.timestamp + frame.duration)s
         pass
         #sys.stdout.write('-(%s)' % (frame.timestamp + frame.duration))
     sys.stdout.write('\n')
