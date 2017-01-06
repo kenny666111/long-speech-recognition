@@ -4,6 +4,7 @@ import contextlib
 import sys
 import wave
 import  logging
+import time
 logging.basicConfig(
     format='%(asctime)s [%(levelname)s] [%(name)s] %(message)s',
     level=logging.INFO)
@@ -64,6 +65,8 @@ def vad_collector(sample_rate, frame_duration_ms,
             num_voiced = len([f for f in ring_buffer
                               if vad.is_speech(f.bytes, sample_rate)])
             if num_voiced > 0.9 * ring_buffer.maxlen:
+                time_start = time.strftime('%H:%M:%S', time.gmtime(ring_buffer[0].timestamp))
+                #logging.info()
                 #sys.stdout.write('+(%s)' % (ring_buffer[0].timestamp,))
                 triggered = True
                 voiced_frames.extend(ring_buffer)
@@ -74,17 +77,23 @@ def vad_collector(sample_rate, frame_duration_ms,
             num_unvoiced = len([f for f in ring_buffer
                                 if not vad.is_speech(f.bytes, sample_rate)])
             if num_unvoiced > 0.9 * ring_buffer.maxlen:
-                logging.info(frame.timestamp)
-                logging.info(frame.duration)
+                #logging.info(frame.timestamp)
+                #logging.info(frame.duration)
                 #sys.stdout.write('-(%s)' % (frame.timestamp + frame.duration))
                 triggered = False
-                yield b''.join([f.bytes for f in voiced_frames])
+                logging.info('start:'+time_start)
+                time_end = time.strftime('%H:%M:%S', time.gmtime(frame.timestamp))
+                logging.info('end:' + time_end)
+                yield [b''.join([f.bytes for f in voiced_frames]),time_end, time_start]
                 ring_buffer.clear()
                 voiced_frames = []
     if triggered:
-        #logging.info(frame.timestamp + frame.duration)s
+        time_end = time.strftime('%H:%M:%S', time.gmtime(ring_buffer[0].timestamp))
+        # logging.info('last:'+time_start+'|'+time_end)
+        # logging.info('triger:'+time.strftime('%H:%M:%S', time.gmtime(ring_buffer[0].timestamp)))
         pass
         #sys.stdout.write('-(%s)' % (frame.timestamp + frame.duration))
     sys.stdout.write('\n')
     if voiced_frames:
-        yield b''.join([f.bytes for f in voiced_frames])
+        logging.info('last:' + time_start + '|' + time_end)
+        yield [b''.join([f.bytes for f in voiced_frames]),time_end, time_start]

@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
+import sys
+reload(sys)
+sys.setdefaultencoding('utf-8')
 import argparse
 import json
 import requests
 import  base64
 import os
+import time
 import  logging
 import webrtcvad
 import types
 from multiprocessing import Pool
 import copy_reg
-import wave
-import contextlib
+import re
 from vad import *
 from pydub import AudioSegment
 
@@ -28,10 +31,13 @@ copy_reg.pickle(types.MethodType, _pickle_method)
 
 
 # write srt file
-def write_file(filename, x):
+def write_file(filename,num, time_str, content):
     f = open(filename, 'a')
-    f.write(x + '\n')
+    f.write(str(num) + "\n")
+    f.write(time_str + "\n")
+    f.write(content + "\n\n")
     f.close()
+
 
 class baidu_yuyin:
 
@@ -60,6 +66,17 @@ class baidu_yuyin:
             rate = f.getframerate()
             duration = frames / float(rate)
             return duration
+
+    #格式化每一行字幕
+    def make_srt_line(self, num, time_start, time_end, text):
+        time = time_start+' '+'-->'+' '+time_end
+        return (num, time, text)
+
+    def count_letters(self,word):
+        return len(word) - word.count('，')
+
+
+
 
     # 合并音频文件
     def merge_audio(self, audio_path_list, name):
@@ -93,12 +110,13 @@ class baidu_yuyin:
             return result['result'], audio_file_path
 
     # 长音频, 先做 vad 切分
-    def speech_big(self, audio_file_path, audio_format='wav', rate=16000, channel=1,aggressiveness=2,direc='./'):
+    def speech_big(self, audio_file_path, aggressiveness=2,direc='./'):
         audio, sample_rate = read_wave(audio_file_path)
         vad = webrtcvad.Vad(int(aggressiveness))
         frames = frame_generator(30, audio, sample_rate)
         frames = list(frames)
         segments = vad_collector(sample_rate, 30, 300, vad, frames)
+
         file_list = []
         if not os.path.exists(direc):
             os.makedirs(direc)
@@ -106,8 +124,8 @@ class baidu_yuyin:
             #todo support multiple format
             path = direc+'%002d.wav' % (i,)
             logging.info("now writing:" + path)
-            #print(' Writing %s' % (path,))
-            write_wave(path, segment, sample_rate)
+
+            write_wave(path, segment[0], sample_rate)
             file_list.append(path)
 
         # merge small files to save requests, make sure new file less than 59s
@@ -120,7 +138,8 @@ class baidu_yuyin:
             each_duration = self.get_duration(file_one)
             seconds = seconds+each_duration
             if seconds > 59:
-                newname = 'merge_'+str(merge_time)+'.wav'
+                part_duration = seconds-each_duration
+                newname = 'merge_'+str(merge_time)+'_'+str(part_duration)+'.wav'
                 logging.info("merge writing:" + newname)
                 logging.info("merge content:" + str(merge_files))
                 self.merge_audio(merge_files, newname)
@@ -133,17 +152,19 @@ class baidu_yuyin:
 
 
         # last files to merge
-        newname = 'merge_' + str(merge_time) + '.wav'
+        newname = 'merge_' + str(merge_time)+'_'+str(seconds) + '.wav'
         logging.info("last merge writing:" + newname)
         logging.info("last merge content:" + str(merge_files))
         self.merge_audio(merge_files, newname)
+        final_merged_list.append(newname)
+
 
 
         # request in multiprocess
         i = 0
         res = []
         final_result = []
-        pool_audios = Pool(processes=19)
+        pool_audios = Pool(processes=25)
         while i < len(final_merged_list):
             res.append(pool_audios.apply_async(self.speech_recog, (final_merged_list[i],)))
             i += 1
@@ -153,16 +174,68 @@ class baidu_yuyin:
             try:
                 audio_text, audio_file_name = one.get()
                 if audio:
-                    final_result.append(audio_file_name+':'+audio_text[0])
+                    final_result.append((audio_file_name,audio_text[0]))
             except Exception, e:
                 logging.info('multi process get audio text exception: ' + str(e))
                 continue
 
-        for x in final_result:
-            logging.info(x)
+
+        return final_result
+
+        # for x in final_result:
+        #     logging.info(x)
+
+    # 不做合并直接上传
+    def speech_big_no_split(self, audio_file_path, aggressiveness=2, direc='./'):
+        audio, sample_rate = read_wave(audio_file_path)
+        vad = webrtcvad.Vad(int(aggressiveness))
+        frames = frame_generator(30, audio, sample_rate)
+        frames = list(frames)
+        segments = vad_collector(sample_rate, 30, 300, vad, frames)
+
+        file_list = []
+        subtitles = {}
+        if not os.path.exists(direc):
+            os.makedirs(direc)
+        for i, segment in enumerate(segments):
+            # todo support multiple format
+            path = direc + '%002d.wav' % (i,)
+            logging.info("above data for:" + path)
+            time_end = segment[1]
+            time_start = segment[2]
+            subtitles[path] = (time_start, time_end)
+
+            #logging.info(each_timestamp)
+            # print(' Writing %s' % (path,))
+            write_wave(path, segment[0], sample_rate)
+            file_list.append(path)
 
 
+        #exit()
 
+        # request in multiprocess
+        i = 0
+        res = []
+        final_result = []
+        pool_audios = Pool(processes=25)
+        while i < len(file_list):
+            res.append(pool_audios.apply_async(self.speech_recog, (file_list[i],)))
+            i += 1
+        pool_audios.close()
+        pool_audios.join()
+        for one in res:
+            try:
+                audio_text, audio_file_name = one.get()
+                if audio:
+                    final_result.append((audio_file_name, audio_text[0]))
+            except Exception, e:
+                logging.info('multi process get audio text exception: ' + str(e))
+                continue
+
+        return final_result, subtitles
+
+        # for x in final_result:
+        #     logging.info(x[0]+':'+x[1])
 
 
 if __name__ == '__main__':
@@ -170,12 +243,44 @@ if __name__ == '__main__':
     parser.add_argument("-a", "--aggressiveness")
     parser.add_argument("-f", "--file")
     parser.add_argument("-d", "--direc")
+    parser.add_argument("-m", "--mode")
     args, _ = parser.parse_known_args()
     aggressiveness = args.aggressiveness
     file = args.file
     direc = args.direc
+    mode = args.mode
     new = baidu_yuyin('7450383','FupPD0gzcCGfPznizPZW83jy','obqE6QiBKqGelvevkdfV5AY6u5noH3jA')
     #print new.auth_token()
-    new.speech_big(audio_file_path=file, aggressiveness=aggressiveness, direc=direc)
+    if mode == '1': # 字幕模式
+        all, time_dic = new.speech_big_no_split(audio_file_path=file, aggressiveness=aggressiveness, direc=direc)
+        sub_num = 0
+        for each in all:
+            file_name = each[0]  # merge_7_30.78.wav
+            logging.info('now process:' + file_name)
+            sub = each[1]
+            sub_num = sub_num + 1
+            if file_name in time_dic:
+                time_start_str = time_dic[file_name][0]
+                time_end_str = time_dic[file_name][1]
+                result = new.make_srt_line(sub_num, time_start_str, time_end_str, sub)
+                write_file('new.srt', result[0], result[1], result[2])
+                # print result[1]
+                # print result[2]
+            else:
+                logging.info('no time for:' + file_name)
+    else:
+        all = new.speech_big(audio_file_path=file, aggressiveness=aggressiveness, direc=direc)
+        for each in all:
+            logging.info(each[1])
+
+
+
+
+
+
+
+
     #todo 关于时间轴的思路, 可以先用 agg=3拆分音频, 记下断点, 然后合并上传识别
+    #todo https://github.com/Uberi/speech_recognition 用这个识别 CMU Chinese model offline
+    #todo 时间轴基本思路, 算出每个字基本语速来划定
 
