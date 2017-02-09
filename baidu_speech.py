@@ -7,13 +7,10 @@ import json
 import requests
 import  base64
 import os
-import time
-import  logging
 import webrtcvad
 import types
 from multiprocessing import Pool
 import copy_reg
-import re
 from vad import *
 from pydub import AudioSegment
 
@@ -240,7 +237,7 @@ class baidu_yuyin:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("-a", "--aggressiveness")
+    parser.add_argument("-a", "--aggressiveness") # set its aggressiveness mode, which is an integer between 0 and 3. 0 is the least aggressive about filtering out non-speech, 3 is the most aggressive
     parser.add_argument("-f", "--file")
     parser.add_argument("-d", "--direc")
     parser.add_argument("-m", "--mode")
@@ -249,8 +246,8 @@ if __name__ == '__main__':
     file = args.file
     direc = args.direc
     mode = args.mode
-    new = baidu_yuyin('7450383','FupPD0gzcCGfPznizPZW83jy','obqE6QiBKqGelvevkdfV5AY6u5noH3jA')
-    #print new.auth_token()
+    # todo put your baidu credentials here
+    new = baidu_yuyin('00','xxxxx','xxxxx')
     if mode == '1': # 字幕模式
         all, time_dic = new.speech_big_no_split(audio_file_path=file, aggressiveness=aggressiveness, direc=direc)
         sub_num = 0
@@ -264,23 +261,11 @@ if __name__ == '__main__':
                 time_end_str = time_dic[file_name][1]
                 result = new.make_srt_line(sub_num, time_start_str, time_end_str, sub)
                 write_file('new.srt', result[0], result[1], result[2])
-                # print result[1]
-                # print result[2]
+
             else:
                 logging.info('no time for:' + file_name)
     else:
         all = new.speech_big(audio_file_path=file, aggressiveness=aggressiveness, direc=direc)
         for each in all:
             logging.info(each[1])
-
-
-
-
-
-
-
-
-    #todo 关于时间轴的思路, 可以先用 agg=3拆分音频, 记下断点, 然后合并上传识别
-    #todo https://github.com/Uberi/speech_recognition 用这个识别 CMU Chinese model offline
-    #todo 时间轴基本思路, 算出每个字基本语速来划定
 
