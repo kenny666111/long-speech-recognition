@@ -14,5 +14,5 @@ Precision      : 16-bit
 ### Sample usage:
 
 ```python
-python baidu_speech.py -f zanmei.wav -d ./gkc-cut/ -a 0 -m 2
+python baidu_speech.py -f sample.wav -d ./sample_folder/ -a 0 -m 2
 ```
