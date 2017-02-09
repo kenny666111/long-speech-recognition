@@ -9,3 +9,10 @@ Channels       : 1
 Sample Rate    : 16000
 Precision      : 16-bit
 ```
+
+---
+### Sample usage:
+
+```python
+python baidu_speech.py -f zanmei.wav -d ./gkc-cut/ -a 0 -m 2
+```
