@@ -13,8 +13,11 @@ Precision      : 16-bit
 ```
 
 ---
-### Sample usage:
+## Sample usage:
 
 ```python
 python baidu_speech.py -f sample.wav -d ./sample_folder/ -a 0 -m 2
 ```
+## License
+Copyright (c) 2017 YAXIONG ZOU
+Licensed under the WTFPL license.
